@@ -2,46 +2,90 @@
 <div class="state-fair-deals-page">
   <h1>2025 State Fair Deals</h1>
   <div class="page-content">
-    <!-- Sidebar for vendor filtering -->
+    <!-- Sidebar for title prefix filtering -->
     <div class="sidebar">
-      <h2>Filter by Vendor</h2>
+      <h2>Filter by Product</h2>
       <ul class="vendor-list">
-        <li><a href="?vendor=all" class="vendor-link {% if request.url.params.vendor == nil or request.url.params.vendor == 'all' %}active{% endif %}">All Vendors</a></li>
-        {% assign vendors = collection.products | map: 'vendor' | uniq | sort %}
-        {% for vendor in vendors %}
-          <li><a href="?vendor={{ vendor | url_encode }}" class="vendor-link {% if request.url.params.vendor == vendor %}active{% endif %}">{{ vendor | escape }}</a></li>
-        {% endfor %}
+        <li><a href="#" data-filter="all" class="vendor-link active">All Products</a></li>
+        {% assign collection = collections['2025-state-fair-sale'] %}
+        {% paginate collection.products by 1000 %}
+          {% assign title_prefixes = '' %}
+          {% for product in collection.products %}
+            {% assign title = product.title | strip | default: 'Unknown' %}
+            {% assign words = titleroot: title | split: ' ' %}
+            {% if words.size >= 2 %}
+              {% assign prefix = words | slice: 0, 2 | join: ' ' %}
+            {% else %}
+              {% assign prefix = title %}
+            {% endif %}
+            {% unless title_prefixes contains prefix %}
+              {% if title_prefixes == '' %}
+                {% assign title_prefixes = prefix %}
+              {% else %}
+                {% assign title_prefixes = title_prefixes | append: '|' | append: prefix %}
+              {% endif %}
+            {% endunless %}
+          {% endfor %}
+          {% assign sorted_prefixes = title_prefixes | split: '|' | sort %}
+          {% if sorted_prefixes.size > 0 %}
+            {% for prefix in sorted_prefixes %}
+              <li>
+                <a href="#" data-filter="{{ prefix | escape }}" class="vendor-link">{{ prefix | escape }}</a>
+              </li>
+            {% endfor %}
+          {% else %}
+            <li>No products found. Verify product titles in Shopify admin.</li>
+          {% endif %}
+        {% endpaginate %}
       </ul>
     </div>
     <!-- Main product display -->
     <div class="main-content">
       {% assign collection = collections['2025-state-fair-sale'] %}
-      <!-- Debug: Confirm product count -->
-      <p>Debug: Number of Products: {{ collection.products.size | default: 0 }}</p>
       {% if collection %}
-        <div class="collection-products">
-          {% assign grouped_products = collection.products | group_by: 'vendor' %}
-          {% for group in grouped_products %}
-            {% assign sorted_products = group.items | sort: 'title' %}
-            <h2>{{ group.name | escape }}</h2>
+        {% paginate collection.products by 50 %}
+          <div class="collection-products">
+            {% assign sorted_products = collection.products | sort: 'title' %}
+            {% assign current_prefix = '' %}
             {% for product in sorted_products %}
-              {% if request.url.params.vendor == nil or request.url.params.vendor == 'all' or request.url.params.vendor == group.name %}
-                <div class="product-item">
-                  <a href="{{ product.url }}">
-                    <img src="{{ product.featured_image | img_url: 'medium' | default: 'https://via.placeholder.com/200' }}" alt="{{ product.title | escape }}">
-                    <h3>{{ product.title | escape }}</h3>
-                    {% if customer and product.metafields.custom.state_fair_price %}
-                      <span class="price original-price">Original: <s>{{ product.price | money }}</s></span>
-                      <span class="price state-fair-price">Sale: {{ product.metafields.custom.state_fair_price | times: 100 | money }}</span>
-                    {% else %}
-                      <span class="price regular-price">{{ product.price | money }}</span>
-                    {% endif %}
-                  </a>
-                </div>
+              {% assign title = product.title | strip | default: 'Unknown' %}
+              {% assign words = title | split: ' ' %}
+              {% if words.size >= 2 %}
+                {% assign title_prefix = words | slice: 0, 2 | join: ' ' %}
+              {% else %}
+                {% assign title_prefix = title %}
               {% endif %}
+              {% if title_prefix != current_prefix %}
+                <h2 class="prefix-group" data-prefix="{{ title_prefix | escape }}">{{ title_prefix | escape }}</h2>
+                {% assign current_prefix = title_prefix %}
+              {% endif %}
+              <div class="product-item" data-prefix="{{ title_prefix | escape }}">
+                <a href="{{ product.url }}">
+                  <img
+                    src="{{ product.featured_image | img_url: 'medium' | default: 'https://via.placeholder.com/200' }}"
+                    alt="{{ product.title | escape | default: 'No Title' }}"
+                  >
+                  <h3>{{ product.title | escape | default: 'No Title' }}</h3>
+                  {% if customer and product.metafields.custom.state_fair_price %}
+                    <span class="price original-price"
+                      >Original: <s>{{ product.price | money }}</s></span
+                    >
+                    <span class="price state-fair-price"
+                      >Sale: {{ product.metafields.custom.state_fair_price | times: 100 | money -}}
+                    </span>
+                  {% else %}
+                    <span class="price regular-price">{{ product.price | money }}</span>
+                  {% endif %}
+                </a>
+              </div>
             {% endfor %}
-          {% endfor %}
-        </div>
+          </div>
+          {% if paginate.pages > 1 %}
+            <div class="pagination">
+              {{ paginate | default_pagination }}
+            </div>
+          {% endif %}
+        {% endpaginate %}
       {% else %}
         <p>No products available in this collection. Check collection handle or product assignments.</p>
       {% endif %}
@@ -92,9 +136,14 @@
   .product-item {
     text-align: center;
   }
-  .product-item img {
-    max-width: 100%;
-    height: auto;
+  .product-item.hidden {
+    display: none;
+  }
+  .prefix-group {
+    display: block;
+  }
+  .prefix-group.hidden {
+    display: none;
   }
   .state-fair-price {
     color: #33ff44;
@@ -114,4 +163,28 @@
     font-weight: bold;
     display: block;
   }
+  .pagination {
+    text-align: center;
+    margin-top: 20px;
+  }
 </style>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.vendor-link').forEach((link) => {
+      link.addEventListener('click', function (e) {
+        e.preventDefault();
+        const filter = this.getAttribute('data-filter');
+        document.querySelectorAll('.vendor-link').forEach((l) => l.classList.remove('active'));
+        this.classList.add('active');
+        document.querySelectorAll('.product-item, .prefix-group').forEach((item) => {
+          if (filter === 'all' || item.getAttribute('data-prefix') === filter) {
+            item.classList.remove('hidden');
+          } else {
+            item.classList.add('hidden');
+          }
+        });
+      });
+    });
+  });
+</script>
