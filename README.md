@@ -1,4 +1,3 @@
-# state_fair
 # Adding a Custom Popup to Your Shopify Store for 2025 State Fair Sale
 
 This guide outlines how to create a popup that prompts users to sign in or create an account to access exclusive pricing (up to 25% off) for a 2025 State Fair Sale, redirects them to a deals page after login, and displays discounted prices only for logged-in users.
