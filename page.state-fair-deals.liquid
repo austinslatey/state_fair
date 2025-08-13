@@ -1,0 +1,49 @@
+{% layout 'theme' %}
+<div class="state-fair-deals-page">
+  <h1>2025 State Fair Deals</h1>
+  <!-- Debug: Output collection title and product count -->
+  {% assign collection = collections['2025-state-fair-sale'] %}
+  <p>Debug: Collection Title: {{ collection.title | default: 'Collection not found' }}</p>
+  <p>Debug: Number of Products: {{ collection.products.size | default: 0 }}</p>
+  {% if collection %}
+    <div class="collection-products">
+      {% for product in collection.products %}
+        <div class="product-item">
+          <a href="{{ product.url }}">
+            <img src="{{ product.featured_image | img_url: 'medium' | default: 'https://via.placeholder.com/200' }}" alt="{{ product.title | escape }}">
+            <h3>{{ product.title | escape }}</h3>
+            {% if customer and product.metafields.custom.state_fair_price %}
+              <span class="price state-fair-price">{{ product.metafields.custom.state_fair_price | money }}</span>
+            {% else %}
+              <span class="price regular-price">{{ product.price | money }}</span>
+            {% endif %}
+          </a>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p>No products available in this collection. Check collection handle or product assignments.</p>
+  {% endif %}
+</div>
+
+<style>
+  .collection-products {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+  }
+  .product-item {
+    text-align: center;
+  }
+  .product-item img {
+    max-width: 100%;
+    height: auto;
+  }
+  .state-fair-price {
+    color: #33ff44;
+    font-weight: bold;
+  }
+  .regular-price {
+    color: #333;
+  }
+</style>
