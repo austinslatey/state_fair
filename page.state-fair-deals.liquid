@@ -1,30 +1,89 @@
 {% layout 'theme' %}
 <div class="state-fair-deals-page">
   <h1>2025 State Fair Deals</h1>
-  {% assign collection = collections['2025-state-fair-sale'] %}
-  {% if collection %}
-    <div class="collection-products">
-      {% for product in collection.products %}
-        <div class="product-item">
-          <a href="{{ product.url }}">
-            <img src="{{ product.featured_image | img_url: 'medium' | default: 'https://via.placeholder.com/200' }}" alt="{{ product.title | escape }}">
-            <h3>{{ product.title | escape }}</h3>
-            {% if customer and product.metafields.custom.state_fair_price %}
-              <span class="price original-price">Original: <s>{{ product.price | money }}</s></span>
-              <span class="price state-fair-price">Sale: {{ product.metafields.custom.state_fair_price | times: 100 | money }}</span>
-            {% else %}
-              <span class="price regular-price">{{ product.price | money }}</span>
-            {% endif %}
-          </a>
-        </div>
-      {% endfor %}
+  <div class="page-content">
+    <!-- Sidebar for vendor filtering -->
+    <div class="sidebar">
+      <h2>Filter by Vendor</h2>
+      <ul class="vendor-list">
+        <li><a href="?vendor=all" class="vendor-link {% if request.url.params.vendor == nil or request.url.params.vendor == 'all' %}active{% endif %}">All Vendors</a></li>
+        {% assign vendors = collection.products | map: 'vendor' | uniq | sort %}
+        {% for vendor in vendors %}
+          <li><a href="?vendor={{ vendor | url_encode }}" class="vendor-link {% if request.url.params.vendor == vendor %}active{% endif %}">{{ vendor | escape }}</a></li>
+        {% endfor %}
+      </ul>
     </div>
-  {% else %}
-    <p>No products available in this collection. Check collection handle or product assignments.</p>
-  {% endif %}
+    <!-- Main product display -->
+    <div class="main-content">
+      {% assign collection = collections['2025-state-fair-sale'] %}
+      <!-- Debug: Confirm product count -->
+      <p>Debug: Number of Products: {{ collection.products.size | default: 0 }}</p>
+      {% if collection %}
+        <div class="collection-products">
+          {% assign grouped_products = collection.products | group_by: 'vendor' %}
+          {% for group in grouped_products %}
+            {% assign sorted_products = group.items | sort: 'title' %}
+            <h2>{{ group.name | escape }}</h2>
+            {% for product in sorted_products %}
+              {% if request.url.params.vendor == nil or request.url.params.vendor == 'all' or request.url.params.vendor == group.name %}
+                <div class="product-item">
+                  <a href="{{ product.url }}">
+                    <img src="{{ product.featured_image | img_url: 'medium' | default: 'https://via.placeholder.com/200' }}" alt="{{ product.title | escape }}">
+                    <h3>{{ product.title | escape }}</h3>
+                    {% if customer and product.metafields.custom.state_fair_price %}
+                      <span class="price original-price">Original: <s>{{ product.price | money }}</s></span>
+                      <span class="price state-fair-price">Sale: {{ product.metafields.custom.state_fair_price | times: 100 | money }}</span>
+                    {% else %}
+                      <span class="price regular-price">{{ product.price | money }}</span>
+                    {% endif %}
+                  </a>
+                </div>
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+        </div>
+      {% else %}
+        <p>No products available in this collection. Check collection handle or product assignments.</p>
+      {% endif %}
+    </div>
+  </div>
 </div>
 
 <style>
+  .state-fair-deals-page {
+    display: flex;
+    flex-direction: column;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .page-content {
+    display: flex;
+    gap: 20px;
+  }
+  .sidebar {
+    width: 250px;
+    flex-shrink: 0;
+  }
+  .vendor-list {
+    list-style: none;
+    padding: 0;
+  }
+  .vendor-list li {
+    margin-bottom: 10px;
+  }
+  .vendor-link {
+    text-decoration: none;
+    color: #333;
+    font-weight: bold;
+  }
+  .vendor-link.active,
+  .vendor-link:hover {
+    color: #33ff44;
+  }
+  .main-content {
+    flex-grow: 1;
+  }
   .collection-products {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
