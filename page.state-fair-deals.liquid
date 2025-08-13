@@ -2,36 +2,44 @@
 <div class="state-fair-deals-page">
   <h1>2025 State Fair Deals</h1>
   <div class="page-content">
-    <!-- Sidebar for title prefix filtering -->
+    <!-- Sidebar for vendor prefix filtering -->
     <div class="sidebar">
       <h2>Filter by Product</h2>
       <ul class="vendor-list">
         <li><a href="#" data-filter="all" class="vendor-link active">All Products</a></li>
         {% assign collection = collections['2025-state-fair-sale'] %}
         {% paginate collection.products by 1000 %}
-          {% assign title_prefixes = '' %}
+          {% assign vendor_prefixes = '' %}
           {% for product in collection.products %}
             {% assign title = product.title | strip | default: 'Unknown' %}
-            {% assign words = titleroot: title | split: ' ' %}
-            {% if words.size >= 2 %}
-              {% assign prefix = words | slice: 0, 2 | join: ' ' %}
+            {% assign words = title | replace: '®', '' | split: ' ' %}
+            {% if title contains 'BEDRUG' %}
+              {% assign prefix = 'BEDRUG' %}
+            {% elsif title contains 'Lo Pro' %}
+              {% assign prefix = 'Lo Pro' %}
+            {% elsif title contains 'Sentry CT' %}
+              {% assign prefix = 'Sentry CT' %}
+            {% elsif title contains 'TONNOSPORT' %}
+              {% assign prefix = 'TONNOSPORT' %}
+            {% elsif title contains 'TruXport' %}
+              {% assign prefix = 'TruXport' %}
+            {% elsif title contains 'VANISH' %}
+              {% assign prefix = 'VANISH' %}
             {% else %}
-              {% assign prefix = title %}
+              {% assign prefix = words | slice: 0, 2 | join: ' ' | default: 'Unknown' %}
             {% endif %}
-            {% unless title_prefixes contains prefix %}
-              {% if title_prefixes == '' %}
-                {% assign title_prefixes = prefix %}
+            {% unless vendor_prefixes contains prefix %}
+              {% if vendor_prefixes == '' %}
+                {% assign vendor_prefixes = prefix %}
               {% else %}
-                {% assign title_prefixes = title_prefixes | append: '|' | append: prefix %}
+                {% assign vendor_prefixes = vendor_prefixes | append: '|' | append: prefix %}
               {% endif %}
             {% endunless %}
           {% endfor %}
-          {% assign sorted_prefixes = title_prefixes | split: '|' | sort %}
+          {% assign sorted_prefixes = vendor_prefixes | split: '|' | sort %}
           {% if sorted_prefixes.size > 0 %}
             {% for prefix in sorted_prefixes %}
-              <li>
-                <a href="#" data-filter="{{ prefix | escape }}" class="vendor-link">{{ prefix | escape }}</a>
-              </li>
+              <li><a href="#" data-filter="{{ prefix | escape }}" class="vendor-link">{{ prefix | escape }}</a></li>
             {% endfor %}
           {% else %}
             <li>No products found. Verify product titles in Shopify admin.</li>
@@ -49,30 +57,35 @@
             {% assign current_prefix = '' %}
             {% for product in sorted_products %}
               {% assign title = product.title | strip | default: 'Unknown' %}
-              {% assign words = title | split: ' ' %}
-              {% if words.size >= 2 %}
-                {% assign title_prefix = words | slice: 0, 2 | join: ' ' %}
+              {% assign words = title | replace: '®', '' | split: ' ' %}
+              {% if title contains 'BEDRUG' %}
+                {% assign prefix = 'BEDRUG' %}
+              {% elsif title contains 'Lo Pro' %}
+                {% assign prefix = 'Lo Pro' %}
+              {% elsif title contains 'Sentry CT' %}
+                {% assign prefix = 'Sentry CT' %}
+              {% elsif title contains 'TONNOSPORT' %}
+                {% assign prefix = 'TONNOSPORT' %}
+              {% elsif title contains 'TruXport' %}
+                {% assign prefix = 'TruXport' %}
+              {% elsif title contains 'VANISH' %}
+                {% assign prefix = 'VANISH' %}
               {% else %}
-                {% assign title_prefix = title %}
+                {% assign prefix = words | slice: 0, 2 | join: ' ' | default: 'Unknown' %}
               {% endif %}
-              {% if title_prefix != current_prefix %}
-                <h2 class="prefix-group" data-prefix="{{ title_prefix | escape }}">{{ title_prefix | escape }}</h2>
-                {% assign current_prefix = title_prefix %}
+              {% if prefix != current_prefix %}
+                <h2 class="prefix-group" data-prefix="{{ prefix | escape }}">{{ prefix | escape }}</h2>
+                {% assign current_prefix = prefix %}
               {% endif %}
-              <div class="product-item" data-prefix="{{ title_prefix | escape }}">
+              <div class="product-item" data-prefix="{{ prefix | escape }}">
                 <a href="{{ product.url }}">
-                  <img
-                    src="{{ product.featured_image | img_url: 'medium' | default: 'https://via.placeholder.com/200' }}"
-                    alt="{{ product.title | escape | default: 'No Title' }}"
-                  >
-                  <h3>{{ product.title | escape | default: 'No Title' }}</h3>
+                  <div class="product-image">
+                    <img src="{{ product.featured_image | img_url: '250x250' | default: 'https://via.placeholder.com/250' }}" alt="{{ product.title | escape | default: 'No Title' }}">
+                  </div>
+                  <h3>{{ product.title | truncate: 60 | escape | default: 'No Title' }}</h3>
                   {% if customer and product.metafields.custom.state_fair_price %}
-                    <span class="price original-price"
-                      >Original: <s>{{ product.price | money }}</s></span
-                    >
-                    <span class="price state-fair-price"
-                      >Sale: {{ product.metafields.custom.state_fair_price | times: 100 | money -}}
-                    </span>
+                    <span class="price original-price">Original: <s>{{ product.price | money }}</s></span>
+                    <span class="price state-fair-price">Sale: {{ product.metafields.custom.state_fair_price | times: 100 | money }}</span>
                   {% else %}
                     <span class="price regular-price">{{ product.price | money }}</span>
                   {% endif %}
@@ -97,7 +110,7 @@
   .state-fair-deals-page {
     display: flex;
     flex-direction: column;
-    max-width: 1200px;
+    max-width: 100%;
     margin: 0 auto;
     padding: 20px;
   }
@@ -170,14 +183,14 @@
 </style>
 
 <script>
-  document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('.vendor-link').forEach((link) => {
-      link.addEventListener('click', function (e) {
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.vendor-link').forEach(link => {
+      link.addEventListener('click', function(e) {
         e.preventDefault();
         const filter = this.getAttribute('data-filter');
-        document.querySelectorAll('.vendor-link').forEach((l) => l.classList.remove('active'));
+        document.querySelectorAll('.vendor-link').forEach(l => l.classList.remove('active'));
         this.classList.add('active');
-        document.querySelectorAll('.product-item, .prefix-group').forEach((item) => {
+        document.querySelectorAll('.product-item, .prefix-group').forEach(item => {
           if (filter === 'all' || item.getAttribute('data-prefix') === filter) {
             item.classList.remove('hidden');
           } else {
