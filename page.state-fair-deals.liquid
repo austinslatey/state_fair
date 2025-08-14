@@ -7,78 +7,16 @@
       <h2>Filter by Product</h2>
       <ul class="vendor-list">
         <li><a href="#" data-filter="all" class="vendor-link active">All Products</a></li>
-        {% assign collection = collections['2025-state-fair-sale'] %}
-        {% paginate collection.products by 1000 %}
-          {% assign title_prefixes = '' %}
-          {% for product in collection.products %}
-            {% assign title = product.title | strip | default: 'Unknown' %}
-            {% assign words = title | split: ' ' %}
-            {% if words.size >= 2 %}
-              {% assign prefix = words | slice: 0, 2 | join: ' ' %}
-            {% else %}
-              {% assign prefix = title %}
-            {% endif %}
-            {% unless title_prefixes contains prefix %}
-              {% if title_prefixes == '' %}
-                {% assign title_prefixes = prefix %}
-              {% else %}
-                {% assign title_prefixes = title_prefixes | append: '|' | append: prefix %}
-              {% endif %}
-            {% endunless %}
-          {% endfor %}
-          {% assign sorted_prefixes = title_prefixes | split: '|' | sort %}
-          {% if sorted_prefixes.size > 0 %}
-            {% for prefix in sorted_prefixes %}
-              <li>
-                <a href="#" data-filter="{{ prefix | escape }}" class="vendor-link">{{ prefix | escape }}</a>
-              </li>
-            {% endfor %}
-          {% else %}
-            <li>No products found. Verify product titles in Shopify admin.</li>
-          {% endif %}
-        {% endpaginate %}
+        <!-- Populated dynamically by JavaScript -->
       </ul>
     </div>
     <!-- Main product display -->
     <div class="main-content">
-      {% assign collection = collections['2025-state-fair-sale'] %}
-      {% if collection and collection.products.size > 0 %}
-        <div class="collection-products">
-          {% assign sorted_products = collection.products | sort: 'title' %}
-          {% assign current_prefix = '' %}
-          {% for product in sorted_products %}
-            {% assign title = product.title | strip | default: 'Unknown' %}
-            {% assign words = title | split: ' ' %}
-            {% if words.size >= 2 %}
-              {% assign title_prefix = words | slice: 0, 2 | join: ' ' %}
-            {% else %}
-              {% assign title_prefix = title %}
-            {% endif %}
-            {% if title_prefix != current_prefix %}
-              <h2 class="prefix-group" data-prefix="{{ title_prefix | escape }}">{{ title_prefix | escape }}</h2>
-              {% assign current_prefix = title_prefix %}
-            {% endif %}
-            <div class="product-item" data-prefix="{{ title_prefix | escape }}">
-              <a href="{{ product.url }}">
-                <img
-                  src="{{ product.featured_image | img_url: 'medium' | default: 'https://via.placeholder.com/200' }}"
-                  alt="{{ product.title | escape | default: 'No Title' }}"
-                  loading="lazy"
-                >
-                <h3>{{ product.title | escape | default: 'No Title' }}</h3>
-                {% if customer and product.metafields.custom.state_fair_price %}
-                  <span class="price original-price">Original: <s>{{ product.price | money }}</s></span>
-                  <span class="price state-fair-price">Sale: {{ product.metafields.custom.state_fair_price | times: 100 | money }}</span>
-                {% else %}
-                  <span class="price regular-price">{{ product.price | money }}</span>
-                {% endif %}
-              </a>
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p>No products available in this collection. Check collection handle or product assignments.</p>
-      {% endif %}
+      <div class="collection-products" id="collection-products">
+        <!-- Products populated dynamically by JavaScript -->
+      </div>
+      <div id="loading" style="display: none; text-align: center;">Loading...</div>
+      <div id="error" style="display: none; color: red;">Error loading products.</div>
     </div>
   </div>
 </div>
@@ -157,28 +95,180 @@
 </style>
 
 <script>
-  document.addEventListener('DOMContentLoaded', function () {
-    const vendorLinks = document.querySelectorAll('.vendor-link');
-    const products = document.querySelectorAll('.product-item');
-    const prefixGroups = document.querySelectorAll('.prefix-group');
+  // Storefront API configuration
+  const STORE_DOMAIN = 'https://waldoch-truck-accessories-store.myshopify.com';
+  const API_VERSION = '2025-04';
+  const ACCESS_TOKEN = process.env.Storefront_API_Access_Token;
+  const COLLECTION_HANDLE = '2025-state-fair-sale';
+  const PRODUCTS_PER_PAGE = 250;
 
-    vendorLinks.forEach((link) => {
-      link.addEventListener('click', function (e) {
+  // Fetch products from Storefront API
+  async function fetchProducts(cursor = null) {
+    const query = `
+      query GetCollectionProducts($handle: String!, $first: Int!, $cursor: String) {
+        collection(handle: $handle) {
+          id
+          title
+          products(first: $first, after: $cursor) {
+            edges {
+              node {
+                id
+                title
+                handle
+                featuredImage {
+                  url
+                  altText
+                }
+                priceRange {
+                  minVariantPrice {
+                    amount
+                    currencyCode
+                  }
+                }
+                metafields(identifiers: [{ namespace: "custom", key: "state_fair_price" }]) {
+                  id
+                  namespace
+                  key
+                  value
+                }
+              }
+              cursor
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+          }
+        }
+      }
+    `;
+    const variables = {
+      handle: COLLECTION_HANDLE,
+      first: PRODUCTS_PER_PAGE,
+      cursor,
+    };
+
+    try {
+      document.getElementById('loading').style.display = 'block';
+      const response = await fetch(`${STORE_DOMAIN}/api/${API_VERSION}/graphql.json`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Storefront-Access-Token': ACCESS_TOKEN,
+        },
+        body: JSON.stringify({ query, variables }),
+      });
+
+      if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+      const data = await response.json();
+      if (data.errors) throw new Error(data.errors.map(e => e.message).join(', '));
+
+      return data.data.collection ? data.data.collection.products : null;
+    } catch (error) {
+      console.error('Error fetching products:', error);
+      document.getElementById('error').style.display = 'block';
+      return null;
+    } finally {
+      document.getElementById('loading').style.display = 'none';
+    }
+  }
+
+  // Render products and filters
+  async function renderCollection() {
+    const collectionProducts = document.getElementById('collection-products');
+    const vendorList = document.querySelector('.vendor-list');
+    let allProducts = [];
+    let prefixes = new Set();
+    let cursor = null;
+    let hasNextPage = true;
+
+    // Fetch all products with pagination
+    while (hasNextPage) {
+      const result = await fetchProducts(cursor);
+      if (!result) break;
+
+      const products = result.edges.map(edge => edge.node);
+      allProducts = allProducts.concat(products);
+      hasNextPage = result.pageInfo.hasNextPage;
+      cursor = result.pageInfo.endCursor;
+    }
+
+    // Sort products by title
+    allProducts.sort((a, b) => a.title.localeCompare(b.title));
+
+    // Generate prefix filters
+    allProducts.forEach(product => {
+      const words = product.title.trim().split(' ');
+      const prefix = words.length >= 2 ? words.slice(0, 2).join(' ') : product.title;
+      prefixes.add(prefix);
+    });
+    const sortedPrefixes = Array.from(prefixes).sort();
+    sortedPrefixes.forEach(prefix => {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = '#';
+      a.className = 'vendor-link';
+      a.dataset.filter = prefix;
+      a.textContent = prefix;
+      li.appendChild(a);
+      vendorList.appendChild(li);
+    });
+
+    // Render products
+    let currentPrefix = '';
+    allProducts.forEach(product => {
+      const words = product.title.trim().split(' ');
+      const titlePrefix = words.length >= 2 ? words.slice(0, 2).join(' ') : product.title;
+
+      // Add prefix header if new
+      if (titlePrefix !== currentPrefix) {
+        const h2 = document.createElement('h2');
+        h2.className = 'prefix-group';
+        h2.dataset.prefix = titlePrefix;
+        h2.textContent = titlePrefix;
+        collectionProducts.appendChild(h2);
+        currentPrefix = titlePrefix;
+      }
+
+      // Create product item
+      const div = document.createElement('div');
+      div.className = 'product-item';
+      div.dataset.prefix = titlePrefix;
+      div.innerHTML = `
+        <a href="/products/${product.handle}">
+          <img
+            src="${product.featuredImage?.url || 'https://via.placeholder.com/200'}"
+            alt="${product.title || 'No Title'}"
+            loading="lazy"
+          >
+          <h3>${product.title || 'No Title'}</h3>
+          ${
+            product.metafields[0]?.value
+              ? `
+                <span class="price original-price">Original: <s>${parseFloat(product.priceRange.minVariantPrice.amount).toFixed(2)} ${product.priceRange.minVariantPrice.currencyCode}</s></span>
+                <span class="price state-fair-price">Sale: ${(parseFloat(product.metafields[0].value) * 1).toFixed(2)} ${product.priceRange.minVariantPrice.currencyCode}</span>
+              `
+              : `<span class="price regular-price">${parseFloat(product.priceRange.minVariantPrice.amount).toFixed(2)} ${product.priceRange.minVariantPrice.currencyCode}</span>`
+          }
+        </a>
+      `;
+      collectionProducts.appendChild(div);
+    });
+
+    // Add filter event listeners
+    document.querySelectorAll('.vendor-link').forEach(link => {
+      link.addEventListener('click', e => {
         e.preventDefault();
-        const filter = this.getAttribute('data-filter');
-
-        // Update active link
-        vendorLinks.forEach((l) => l.classList.remove('active'));
-        this.classList.add('active');
-
-        // Filter products and prefix groups
-        products.forEach((item) => {
+        const filter = link.getAttribute('data-filter');
+        document.querySelectorAll('.vendor-link').forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
+        document.querySelectorAll('.product-item, .prefix-group').forEach(item => {
           item.classList.toggle('hidden', filter !== 'all' && item.getAttribute('data-prefix') !== filter);
-        });
-        prefixGroups.forEach((group) => {
-          group.classList.toggle('hidden', filter !== 'all' && group.getAttribute('data-prefix') !== filter);
         });
       });
     });
-  });
+  }
+
+  // Initialize
+  document.addEventListener('DOMContentLoaded', renderCollection);
 </script>
