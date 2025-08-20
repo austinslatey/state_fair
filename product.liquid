@@ -9,21 +9,20 @@
   <meta itemprop="image" content="{{ product.featured_image.src | img_url: '800x' }}">
 
   {% section 'product-template' %}
-
 </div>
 
-{% include "modal-video" %}
+{% include 'modal-video' %}
 
 <script>
   global_quantity = {};
   {% for variant in product.variants %}
-    {% if variant.inventory_policy == "continue" %}
-      global_quantity[{{ variant.id }}] = 'continue' + {{ variant.inventory_quantity }};
-    {% else %}
-      global_quantity[{{ variant.id }}] = {{ variant.inventory_quantity }};
-    {% endif %}
+  {% if variant.inventory_policy == "continue" %}
+  	global_quantity[{{ variant.id }}] = 'continue' + {{ variant.inventory_quantity }};
+  {% else %}
+  	global_quantity[{{ variant.id }}] = {{ variant.inventory_quantity }};
+  {% endif %}
   {% endfor %}
-    
+
   {% if product.available and settings.satc_show %}
     $(document).ready(function(){
       $('.btn-addtocart').length && $('.tt-fixed-product-wrapper').length && initStickyAddToCart();
@@ -71,7 +70,7 @@
           p.find('.tt-price').replaceWith(q.find('.tt-price').first().clone());
         }, 200)
       })
-      
+
       function isatcResize(){
         if($('.select_options').length) return false;
         var h = p.innerHeight() - 4;
@@ -83,6 +82,7 @@
           var c_ = c.clone();
           p.addClass('atdshowed').find('.tt-input-counter').replaceWith(c_);
           p.find('.tt-price').replaceWith(q.find('.tt-price').first().clone());
+          p.find('.btn').replaceWith($('.btn-addtocart').first().clone().removeClass('btn-lg btn-addtocart addtocart-js'));
           $('.tt-promo-fixed').length && $('.tt-promo-fixed').css('bottom', p.innerHeight()+20);
           p.fadeIn(200);
         }
@@ -94,97 +94,81 @@
       }
     }
   {% endif %}
-
+</script>
+<script>
   var selectCallback = function(variant, selector) {
-    console.log('selectCallback triggered', variant); // Debug log
+    console.log('selectCallback triggered', variant);
+
     const isLoggedIn = {{ customer | json }} !== null;
     const isStateFairProduct = {{ product.collections | map: 'handle' | json }}.includes('2025-state-fair-sale');
     const saleOn = variant.compare_at_price > variant.price;
-    let price = variant.price;
+
+    let displayPrice = variant.price / 100; // dollars
+    let priceForAffirm = variant.price;     // cents
+
     let priceHtml = saleOn
-      ? `<span class="new-price">${Shopify.formatMoney(variant.price)}</span><span class="old-price">${Shopify.formatMoney(variant.compare_at_price)}</span>`
-      : `<span class="regular-price">${Shopify.formatMoney(variant.price)}</span>`;
+      ? `<span class="sale-price">${Shopify.formatMoney(variant.price)}</span><span class="old-price">${Shopify.formatMoney(variant.compare_at_price)}</span>`
+      : `<span class="new-price">${Shopify.formatMoney(variant.price)}</span><span class="old-price"></span>`;
 
     if (isLoggedIn && isStateFairProduct) {
-      const selectedOption = document.querySelector(`[data-var_id="${variant.id}"]`);
-      const stateFairPrice = selectedOption ? selectedOption.dataset.stateFairPrice : {{ product.metafields.custom.state_fair_price | json }};
+      const stateFairPrice = {{ product.metafields.custom.state_fair_price | json }};
       if (stateFairPrice) {
-        price = parseFloat(stateFairPrice) * 100; // Convert to cents for Affirm
+        // metafield stored in dollars, e.g. "259.00"
+        displayPrice = parseFloat(stateFairPrice);             // dollars
+        priceForAffirm = Math.round(displayPrice * 100);       // convert to cents
+
         priceHtml = `
           <span class="original-price"><s>${Shopify.formatMoney(variant.price)}</s></span>
-          <span class="state-fair-price">${Shopify.formatMoney(price)}</span>
+          <span class="state-fair-price">${Shopify.formatMoney(priceForAffirm)}</span>
         `;
       }
     }
 
-    $('.affirm-as-low-as').attr('data-amount', price);
+    // Update Affirm
+    $('.affirm-as-low-as').attr('data-amount', priceForAffirm);
     try {
       affirm.ui.refresh();
     } catch (e) {
       console.warn('Affirm refresh failed:', e.message);
     }
 
+    // Update all price displays
     $('.tt-price').each(function() {
       $(this).html(priceHtml);
     });
   };
 
-  // Ensure Shopify.formatMoney is defined
-  if (!Shopify.formatMoney) {
-    Shopify.formatMoney = function(cents, format) {
-      if (typeof cents === 'string') { cents = cents.replace('.', ''); }
-      var value = '';
-      var placeholderRegex = /\{\{\s*(\w+)\s*\}\}/;
-      var formatString = format || '${{amount}}';
-      function formatWithDelimiters(number, precision, thousands, decimal) {
-        precision = precision || 2;
-        thousands = thousands || ',';
-        decimal = decimal || '.';
-        if (isNaN(number) || number == null) { return 0; }
-        number = (number / 100.0).toFixed(precision);
-        var parts = number.split('.');
-        var dollars = parts[0].replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1' + thousands);
-        var cents = parts[1] ? (decimal + parts[1]) : '';
-        return dollars + cents;
-      }
-      switch(formatString.match(placeholderRegex)[1]) {
-        case 'amount':
-          value = formatWithDelimiters(cents, 2);
-          break;
-        case 'amount_no_decimals':
-          value = formatWithDelimiters(cents, 0);
-          break;
-        case 'amount_with_comma_separator':
-          value = formatWithDelimiters(cents, 2, '.', ',');
-          break;
-        case 'amount_no_decimals_with_comma_separator':
-          value = formatWithDelimiters(cents, 0, '.', ',');
-          break;
-      }
-      return formatString.replace(placeholderRegex, value);
+  // Run once on page load for the first variant
+  document.addEventListener("DOMContentLoaded", function() {
+    if (typeof selectCallback === "function" && window.productJson) {
+      const firstVariant = window.productJson.variants[0];
+      selectCallback(firstVariant);
+    }
+  });
+</script>
+
+{% comment %}
+  <script>
+    var selectCallback = function(variant, selector) {
+
+      //Affirm Promos: Monthly Payment Messaging, dynamic pricing embed code
+      //
+      //NOTE: This Affirm embed code is only needed if you are using product variants.
+      //'selectCallback' might not be in your product.liquid template if product variants are not used or supported.
+      //If you are using product variants in your shop, use the following code to dynamically update your Monthly Payment Messaging when the customer selects a different product variant.
+
+      $('.affirm-as-low-as').attr('data-amount',variant.price);
+      affirm.ui.refresh();
+
     };
-  }
-</script>
-<script>
-  var selectCallback = function(variant, selector) {
-     
-    //Affirm Promos: Monthly Payment Messaging, dynamic pricing embed code
-    //
-    //NOTE: This Affirm embed code is only needed if you are using product variants.
-    //'selectCallback' might not be in your product.liquid template if product variants are not used or supported.
-    //If you are using product variants in your shop, use the following code to dynamically update your Monthly Payment Messaging when the customer selects a different product variant.
-    
-    $('.affirm-as-low-as').attr('data-amount',variant.price);
-    affirm.ui.refresh();
-     
-  };
- 
-</script>
-<script>
-  var selectCallback = function(variant, selector) {  
-    $('.affirm-as-low-as').attr('data-amount',variant.price);
-    affirm.ui.refresh();
-      
-  };
-  
-</script>
+
+  </script>
+  <script>
+    var selectCallback = function(variant, selector) {
+      $('.affirm-as-low-as').attr('data-amount',variant.price);
+      affirm.ui.refresh();
+
+    };
+
+  </script>
+{% endcomment %}
