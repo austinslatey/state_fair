@@ -128,9 +128,50 @@
   // Storefront API configuration
   const STORE_DOMAIN = 'https://waldoch-truck-accessories-store.myshopify.com';
   const API_VERSION = '2025-04';
-  const ACCESS_TOKEN = process.env.Storefront_API_Access_Token;
+  const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
   const COLLECTION_HANDLE = '2025-state-fair-sale';
   const PRODUCTS_PER_PAGE = 250;
+
+  // Normalize product title for grouping
+  function normalizeTitle(title) {
+    if (!title) return 'unknown';
+    // Remove special characters, normalize case, and standardize variations
+    let normalized = title
+      .toLowerCase()
+      .replace(/[®™]/g, '')
+      .replace(/\s+/g, ' ')
+      .replace('flp', 'flip')
+      .replace('dodge ram', 'ram')
+      .trim();
+    
+    // Extract base name (brand or first significant word/phrase)
+    const words = normalized.split(' ');
+    if (words.length === 0) return 'unknown';
+    
+    // Known brands or categories
+    const brands = [
+      'aeroskin', 'amp', 'bedrug', 'bedstep', 'düha', 'thule', 'ford', 'ram',
+      'impactliner', 'goodyear', 'cooper', 'nitto', 'kenda', 'toyo', 'magnaflow',
+      'truxedo', 'bakflip', 'bds', 'bushwacker', 'floorliner', 'hdx', 'powerstep'
+    ];
+    
+    // Check if the title starts with or contains a known brand
+    let baseName = words[0];
+    for (const brand of brands) {
+      if (normalized.startsWith(brand) || normalized.includes(brand)) {
+        baseName = brand;
+        break;
+      }
+    }
+    
+    // Handle special cases
+    if (normalized.includes('chrome')) baseName = 'chrome';
+    if (normalized.includes('inflatable')) baseName = 'inflatable';
+    if (normalized.includes('winch')) baseName = 'winch';
+    if (normalized.includes('model')) baseName = 'model';
+    
+    return baseName;
+  }
 
   // Fetch products from Storefront API
   async function fetchProducts(cursor = null, retries = 3) {
@@ -240,69 +281,81 @@
 
     console.log('Total products fetched:', allProducts.length);
     console.log('Product titles:', allProducts.map(p => p.title));
-    console.log('Prefixes:', Array.from(prefixes));
 
-    // Sort products by title
-    allProducts.sort((a, b) => a.title.localeCompare(b.title));
+    // Group products by normalized base name
+    const groupedProducts = {};
+    allProducts.forEach(product => {
+      const baseName = normalizeTitle(product.title);
+      if (!groupedProducts[baseName]) {
+        groupedProducts[baseName] = [];
+      }
+      groupedProducts[baseName].push(product);
+      prefixes.add(baseName);
+    });
+
+    // Sort prefixes and products within each group
+    const sortedPrefixes = Array.from(prefixes).sort();
+    Object.keys(groupedProducts).forEach(baseName => {
+      groupedProducts[baseName].sort((a, b) => {
+        // Extract part number or variant identifier for sorting within group
+        const aParts = a.title.trim().split(' ');
+        const bParts = b.title.trim().split(' ');
+        const aIdentifier = aParts[aParts.length - 1];
+        const bIdentifier = bParts[bParts.length - 1];
+        // Sort by part number numerically if possible, otherwise by title
+        if (baseName === 'düha' || baseName === 'impactliner') {
+          return parseInt(aIdentifier.replace(/\D/g, '')) - parseInt(bIdentifier.replace(/\D/g, '')) || a.title.localeCompare(b.title);
+        }
+        return a.title.localeCompare(b.title);
+      });
+    });
 
     // Generate prefix filters
-    allProducts.forEach(product => {
-      if (!product.title) console.log('Product with missing title:', product.handle);
-      const words = product.title.trim().split(' ');
-      const prefix = words.length >= 2 ? words.slice(0, 2).join(' ') : product.title;
-      prefixes.add(prefix);
-    });
-    const sortedPrefixes = Array.from(prefixes).sort();
     sortedPrefixes.forEach(prefix => {
       const li = document.createElement('li');
       const a = document.createElement('a');
       a.href = '#';
       a.className = 'vendor-link';
       a.dataset.filter = prefix;
-      a.textContent = prefix;
+      a.textContent = prefix.charAt(0).toUpperCase() + prefix.slice(1); // Capitalize
       li.appendChild(a);
       vendorList.appendChild(li);
     });
 
     // Render products
-    let currentPrefix = '';
-    allProducts.forEach(product => {
-      const words = product.title.trim().split(' ');
-      const titlePrefix = words.length >= 2 ? words.slice(0, 2).join(' ') : product.title;
+    sortedPrefixes.forEach(baseName => {
+      // Add group header
+      const h2 = document.createElement('h2');
+      h2.className = 'prefix-group';
+      h2.dataset.prefix = baseName;
+      h2.textContent = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+      collectionProducts.appendChild(h2);
 
-      // Add prefix header if new
-      if (titlePrefix !== currentPrefix) {
-        const h2 = document.createElement('h2');
-        h2.className = 'prefix-group';
-        h2.dataset.prefix = titlePrefix;
-        h2.textContent = titlePrefix;
-        collectionProducts.appendChild(h2);
-        currentPrefix = titlePrefix;
-      }
-
-      // Create product item
-      const div = document.createElement('div');
-      div.className = 'product-item';
-      div.dataset.prefix = titlePrefix;
-      div.innerHTML = `
-        <a href="/products/${product.handle}">
-          <img
-            src="${product.featuredImage?.url ? product.featuredImage.url + '?width=200&height=150&crop=center' : 'https://via.placeholder.com/200'}"
-            alt="${product.title || 'No Title'}"
-            loading="lazy"
-          >
-          <h3>${product.title || 'No Title'}</h3>
-          ${
-            product.metafields[0]?.value
-              ? `
-                <span class="price original-price">Original: <s>$${parseFloat(product.priceRange.minVariantPrice.amount).toFixed(2)}</s></span>
-                <span class="price state-fair-price">Sale: $${(parseFloat(product.metafields[0].value) * 1).toFixed(2)}</span>
-              `
-              : `<span class="price regular-price">$${parseFloat(product.priceRange.minVariantPrice.amount).toFixed(2)}</span>`
-          }
-        </a>
-      `;
-      collectionProducts.appendChild(div);
+      // Render products in this group
+      groupedProducts[baseName].forEach(product => {
+        const div = document.createElement('div');
+        div.className = 'product-item';
+        div.dataset.prefix = baseName;
+        div.innerHTML = `
+          <a href="/products/${product.handle}">
+            <img
+              src="${product.featuredImage?.url ? product.featuredImage.url + '?width=200&height=150&crop=center' : 'https://via.placeholder.com/200'}"
+              alt="${product.title || 'No Title'}"
+              loading="lazy"
+            >
+            <h3>${product.title || 'No Title'}</h3>
+            ${
+              product.metafields[0]?.value
+                ? `
+                  <span class="price original-price">Original: <s>$${parseFloat(product.priceRange.minVariantPrice.amount).toFixed(2)}</s></span>
+                  <span class="price state-fair-price">Sale: $${(parseFloat(product.metafields[0].value) * 1).toFixed(2)}</span>
+                `
+                : `<span class="price regular-price">$${parseFloat(product.priceRange.minVariantPrice.amount).toFixed(2)}</span>`
+            }
+          </a>
+        `;
+        collectionProducts.appendChild(div);
+      });
     });
 
     // Add filter event listeners
