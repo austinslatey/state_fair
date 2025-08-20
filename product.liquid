@@ -1,0 +1,121 @@
+{%- if product.metafields.inventory.ShappifyHidden == 'true' -%}{%- break -%}{%- endif -%}
+{%- comment -%}
+  The contents of the product.liquid template can be found in /sections/product-template.liquid
+{%- endcomment -%}
+
+<div itemscope itemtype="http://schema.org/Product" class="product_page_mobile_slider_no_margin_top">
+  <meta itemprop="name" content="{{ product.title }}">
+  <meta itemprop="url" content="{{ shop.url }}{{ product.url }}">
+  <meta itemprop="image" content="{{ product.featured_image.src | img_url: '800x' }}">
+
+  {% section 'product-template' %}
+
+</div>
+
+{% include "modal-video" %}
+
+<script>
+  global_quantity = {};
+  {% for variant in product.variants %}
+  {% if variant.inventory_policy == "continue" %}
+  	global_quantity[{{ variant.id }}] = 'continue' + {{ variant.inventory_quantity }};
+  {% else %}
+  	global_quantity[{{ variant.id }}] = {{ variant.inventory_quantity }};
+  {% endif %}
+  {% endfor %}
+    
+  {% if product.available and settings.satc_show %}
+    $(document).ready(function(){
+      $('.btn-addtocart').length && $('.tt-fixed-product-wrapper').length && initStickyAddToCart();
+    })
+
+    function initStickyAddToCart(){
+      $('.tt-back-to-top').length && $('.tt-back-to-top').remove();
+
+      var b = $('.btn-addtocart').first(),
+          p = $('.tt-fixed-product-wrapper'),
+          q = $('.tt-product-single-info'),
+          c = q.find('.tt-input-counter').first();
+
+      $(window).resize(isatcResize);
+      $(window).scroll(isatcScrollHandler);
+      isatcResize();
+      isatcScrollHandler();
+
+      $('body').on('click', '.tt-fixed-product-wrapper .plus-btn', function(e){
+        c.find('.plus-btn').trigger('click');
+        p.find('.tt-input-counter').replaceWith(c.clone());
+      })
+      $('body').on('click', '.tt-fixed-product-wrapper .minus-btn', function(e){
+        c.find('.minus-btn').trigger('click');
+        p.find('.tt-input-counter').replaceWith(c.clone());
+      })
+      $('body').on('click', '.tt-fixed-product-wrapper .btn', function(e){
+        e.preventDefault();
+        b.trigger('click');
+      })
+      $('body').on('change', '.tt-fixed-product-wrapper .tt-input-counter input', function(e){
+        c.find('input').val($(this).val()).trigger('change');
+        p.find('.tt-input-counter').replaceWith(c.clone());
+      })
+      $('body').on('click focusout', '.tt-fixed-product-wrapper select', function(e){
+        if(e.type == 'click' && !p.find('form').hasClass('formactive')){
+          p.find('form').addClass('formactive');
+          return false;
+        }
+        p.find('form').removeClass('formactive');
+      })
+      $('body').on('change', '.tt-fixed-product-wrapper select', function(e){
+        setTimeout(function(){
+          p.find('.btn').replaceWith($('.btn-addtocart').first().clone().removeClass('btn-lg btn-addtocart addtocart-js'));
+          p.find('.tt-price').replaceWith(q.find('.tt-price').first().clone());
+        }, 200)
+      })
+      
+      function isatcResize(){
+        if($('.select_options').length) return false;
+        var h = p.innerHeight() - 4;
+        $('footer').css('padding-bottom', h);
+      }
+      function isatcScrollHandler(){
+        if($(window).scrollTop() > b.offset().top){
+          if(p.hasClass('atdshowed') || $('.select_options').length) return false;
+          var c_ = c.clone();
+          p.addClass('atdshowed').find('.tt-input-counter').replaceWith(c_);
+          p.find('.tt-price').replaceWith(q.find('.tt-price').first().clone());
+          p.find('.btn').replaceWith($('.btn-addtocart').first().clone().removeClass('btn-lg btn-addtocart addtocart-js'));
+          $('.tt-promo-fixed').length && $('.tt-promo-fixed').css('bottom', p.innerHeight()+20);
+          p.fadeIn(200);
+        }
+        else{
+          if(!p.hasClass('atdshowed') || $('.select_options').length) return false;
+          $('.tt-promo-fixed').length && $('.tt-promo-fixed').css('bottom', '');
+          p.removeClass('atdshowed').fadeOut(200);
+        }
+      }
+    }
+  {% endif %}
+</script>
+<script>
+  var selectCallback = function(variant, selector) {
+     
+    //Affirm Promos: Monthly Payment Messaging, dynamic pricing embed code
+    //
+    //NOTE: This Affirm embed code is only needed if you are using product variants.
+    //'selectCallback' might not be in your product.liquid template if product variants are not used or supported.
+    //If you are using product variants in your shop, use the following code to dynamically update your Monthly Payment Messaging when the customer selects a different product variant.
+    
+    $('.affirm-as-low-as').attr('data-amount',variant.price);
+    affirm.ui.refresh();
+     
+  };
+ 
+</script>
+<script>
+  var selectCallback = function(variant, selector) {  
+    $('.affirm-as-low-as').attr('data-amount',variant.price);
+    affirm.ui.refresh();
+      
+  };
+  
+</script>
