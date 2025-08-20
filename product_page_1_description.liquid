@@ -55,27 +55,47 @@
   <h1 class="tt-title" itemprop="name">{{ product.title }}</h1>
 
   {%- unless settings.catalogue_mode -%}
-    <div
-      class="tt-price"
-      itemprop="price"
-      content="{% if customer %}{% assign is_state_fair_product = false %}{% for collection in product.collections %}{% if collection.handle == '2025-state-fair-sale' %}{% assign is_state_fair_product = true %}{% endif %}{% endfor %}{% if is_state_fair_product and product.metafields.custom.state_fair_price %}{{ product.metafields.custom.state_fair_price | divided_by: 100.00 }}{% else %}{{ product.selected_or_first_available_variant.price | divided_by: 100.00 }}{% endif %}{% else %}{{ product.selected_or_first_available_variant.price | divided_by: 100.00 }}{% endif %}"
-    >
-      {% assign is_state_fair_product = false %}
-      {% for collection in product.collections %}
-        {% if collection.handle == '2025-state-fair-sale' %}
-          {% assign is_state_fair_product = true %}
+    <div itemprop="offers" itemscope itemtype="http://schema.org/Offer">
+      <meta itemprop="priceCurrency" content="{{ shop.currency }}">
+      <link
+        itemprop="availability"
+        href="http://schema.org/{% if product.available %}InStock{% else %}OutOfStock{% endif %}"
+      >
+      <div
+        class="tt-price"
+        itemprop="price"
+        content="{% if customer %}{% assign is_state_fair_product = false %}{% for collection in product.collections %}{% if collection.handle == '2025-state-fair-sale' %}{% assign is_state_fair_product = true %}{% endif %}{% endfor %}{% if is_state_fair_product and product.metafields.custom.state_fair_price %}{{ product.metafields.custom.state_fair_price }}{% else %}{{ product.selected_or_first_available_variant.price | divided_by: 100.00 }}{% endif %}{% else %}{{ product.selected_or_first_available_variant.price | divided_by: 100.00 }}{% endif %}"
+      >
+        {% assign is_state_fair_product = false %}
+        {% for collection in product.collections %}
+          {% if collection.handle == '2025-state-fair-sale' %}
+            {% assign is_state_fair_product = true %}
+          {% endif %}
+        {% endfor %}
+        {% assign sale_on = false %}
+        {% if product.selected_or_first_available_variant.compare_at_price
+            > product.selected_or_first_available_variant.price
+        %}
+          {% assign sale_on = true %}
         {% endif %}
-      {% endfor %}
-      {% assign sale_on = product.selected_or_first_available_variant.compare_at_price > product.selected_or_first_available_variant.price %}
-      {% if customer and is_state_fair_product %}
-        {% assign state_fair_price = product.metafields.custom.state_fair_price %}
-        {% if state_fair_price %}
-          <span class="price original-price">
-            <s>{{ product.selected_or_first_available_variant.price | money }}</s>
-          </span>
-          <span class="price state-fair-price">
-            {{ state_fair_price | money }}
-          </span>
+        {% if customer and is_state_fair_product %}
+          {% assign state_fair_price = product.metafields.custom.state_fair_price %}
+          {% if state_fair_price %}
+            <span class="price original-price">
+              <s>{{ product.selected_or_first_available_variant.price | money }}</s>
+            </span>
+            <span class="price state-fair-price">
+              {{ state_fair_price | times: 100 | money }}
+            </span>
+          {% else %}
+            {% if sale_on %}
+              <span class="sale-price">{{ product.selected_or_first_available_variant.price | money }}</span>
+              <span class="old-price">{{ product.selected_or_first_available_variant.compare_at_price | money }}</span>
+            {% else %}
+              <span class="new-price">{{ product.selected_or_first_available_variant.price | money }}</span>
+              <span class="old-price"></span>
+            {% endif %}
+          {% endif %}
         {% else %}
           {% if sale_on %}
             <span class="sale-price">{{ product.selected_or_first_available_variant.price | money }}</span>
@@ -85,15 +105,7 @@
             <span class="old-price"></span>
           {% endif %}
         {% endif %}
-      {% else %}
-        {% if sale_on %}
-          <span class="sale-price">{{ product.selected_or_first_available_variant.price | money }}</span>
-          <span class="old-price">{{ product.selected_or_first_available_variant.compare_at_price | money }}</span>
-        {% else %}
-          <span class="new-price">{{ product.selected_or_first_available_variant.price | money }}</span>
-          <span class="old-price"></span>
-        {% endif %}
-      {% endif %}
+      </div>
     </div>
     <br>
 
@@ -352,205 +364,22 @@
                 class="hide"
               {% endif %}
             >
-              <span>SKU:</span> <span class="barcode">{{ product.selected_or_first_available_variant.barcode }}</span>
+              <span>{{ 'products.product.barcode' | t }}</span>
+              <span class="prbarcode">{{ product.selected_or_first_available_variant.barcode }}</span>
             </li>
           {%- endif -%}
-          {%- if item.show_sku -%}
-            <li class="sku-js{% if product.selected_or_first_available_variant.sku == '' %} hide{% endif %}">
+          {%- if item.show_product_sku -%}
+            <li
+              {% if product.selected_or_first_available_variant.sku == '' or product.selected_or_first_available_variant.sku == empty? %}
+                class="hide"
+              {% endif %}
+            >
               <span>{{ 'products.product.sku' | t }}</span>
-              <span>{{ product.selected_or_first_available_variant.sku }}</span>
+              <span class="prsku">{{ product.selected_or_first_available_variant.sku }}</span>
             </li>
-          {%- endif -%}
-          {%- if item.show_product_tags -%}
-            {%- assign collection = collections.all -%}
-            {%- assign custom_url = '/collections/all/' -%}
-            {%- capture ppt -%}{%- include 'product_page_tags' -%}{%- endcapture -%}
-            {%- if ppt != '' and ppt != '!' -%}
-              <li>
-                <span>{{ 'products.product.tags' | t }}</span>&nbsp;{{ ppt | replace: ',&nbsp;!' }}
-              </li>
-            {%- endif -%}
           {%- endif -%}
         </ul>
       </div>
     </div>
   {%- endif -%}
-
-  {% if item.full_width_description == 'default' %}{% include 'product_page_tabs' %}{% endif %}
 </div>
-
-{%- if item.show_sizechart and sizechart != '' and sizechart != 'disable' -%}
-  {%- include 'modal-sizechart', value: sizechart -%}
-{%- endif -%}
-{%- if item.show_shipping and shipping != '' and shipping != 'disable' -%}
-  {%- include 'modal-shipping', value: shipping -%}
-{%- endif -%}
-{%- if item.show_message -%}
-  {%- include 'modal-message' -%}
-{%- endif -%}
-
-{%- if settings.first_variant_column_is_image -%}
-  {%- capture piffc_src -%}{%- include 'get_product_images_from_first_column' -%}{%- endcapture -%}
-{%- endif -%}
-
-<script>
-  $(function() {
-    /* For buy now button */
-    function changeBuyNowName(){
-      var $buyinoneclick = $('.buyinoneclick');
-      var buttonname = $buyinoneclick.data("buttonname");
-      var loadname = $buyinoneclick.data("loading");
-      if($buyinoneclick.length == 0) return false;
-      $buyinoneclick.first().bind('DOMNodeInserted', function() {
-        $(this).unbind('DOMNodeInserted');
-        var $shopifypaymentbutton = $(this).find(".shopify-payment-button__button");
-        setTimeout(function(){
-          if($('.buyinoneclick').length){
-            $buyinoneclick.hide();
-            setTimeout(
-              function(){
-                if($(".shopify-payment-button__button").hasClass("shopify-payment-button__button--branded")){
-                  $(".shopify-payment-button__button")
-                  .on("click", function(){
-                    $('.buyinoneclick').replaceWith('<p class="tt-loading-text">' + loadname + '</p>')
-                  })
-                  .find('span[aria-hidden=true]').first().text(buttonname+' ');
-                }
-                else{
-                  $(".shopify-payment-button__button")
-                  .on("click", function(){
-                    $('.buyinoneclick').replaceWith('<p class="tt-loading-text">' + loadname + '</p>')
-                  })
-                  .text(buttonname);
-                }
-                $buyinoneclick.fadeIn()
-              }, 300);
-          }
-        }, 300);
-      });
-    }
-    changeBuyNowName();
-
-    /* Swatches */
-    function productPageJsonLoaded(json_data) {
-      var str = '{{ piffc_src | replace: "'", "\\'" }}';
-      var sw_history = Boolean({{ item.history }});
-      var show_unavailable_options = $('.show_unavailable_variants').length > 0;
-      var cur_opt = str != '' ? JSON.parse(str) : '';
-   var full_opt = cur_opt != '' ? $.extend( texture_obj, cur_opt ) : texture_obj;
-      _selectedByDefault = {% if item.use_select_button %}!(location.search == ''){% else %}true{% endif %};
-      var group1 = new SwatchesConstructor(json_data, {contentParent: '.tt-swatches-container-js', enableHistoryState: sw_history, callback: productPageVariant, externalImagesObject: full_opt, externalColors: colors_value, colorWithBorder: color_with_border, productHandle:'{{ product.handle }}', designOption1:'{{ item.designoption1 }}', designOption2:'{{ item.designoption2 }}', designOption3:'{{ item.designoption3 }}', selectedByDefault: _selectedByDefault, show_unavailable_options: show_unavailable_options });
-
-      $('body').on('change', '.tt-fixed-product-wrapper select', function(e){
-          group1.initSwatches($(this).val());
-          sw_history && history.pushState(null, null, location.pathname+'?variant='+$(this).val());
-          $('[name="id"]').val($(this).val());
-          $('.tt-fixed-product-wrapper').find('.btn').replaceWith($('.btn-addtocart').first().clone().removeClass('btn-lg btn-addtocart addtocart-js'));
-      })
-
-      json_data = null;
-    };
-
-    function productPageVariant(variant, product){
-      var _parent = $('.tt-product-single-info');
-      var _swatch = _parent.find('.tt-swatches-container-js');
-
-      swatchVariantHandler(_parent, variant);
-
-      var sc = $('.tt-swatches-container');
-      if(location.search == '' && $('.select_options').length && !sc.find('.active').length && _swatch.children().length){
-        return false;
-      }
-
-      if(_parent.find('.select_options').length){
-        _parent.find('.select_options').removeClass('select_options');
-        $(window).trigger('resize');
-      }
-
-      swatchVariantButtonHandler(_parent, variant);
-
-      var g = $('#smallGallery');
-      var filter = '.filter'+variant.options[0].split(' ').join('_');
-      if($('.four-images-js').length == 0 && $('.product-images-static').length == 0 && g.hasClass('withfiltres') && g.attr('data-cur') != filter){
-        g.attr('data-cur', filter);
-        g.slick('slickUnfilter').slick('slickFilter',filter);
-      }
-
-      var img_id = variant.featured_image ? variant.featured_image.id : 'none';
-      var target = img_id == 'none' ? $("[data-slick-index=0]").children() : $("[data-target="+img_id+"]");
-      var num = target.last().parent().attr('data-slick-index');
-
-      var $container = $("#smallGallery");
-      $('.four-images-js').length == 0 && $('.product-images-static').length == 0 && setDefaultSlider(variant, num, $container, target);
-      $container = $('.slider-scroll-product');
-      setScrollSlider(num, $container);
-
-      g = $('.tt-mobile-product-slider');
-      if(num && g.length && g.hasClass('slick-initialized')) {
-        var filter = '.filter'+variant.options[0].split(' ').join('_');
-        if(g.hasClass('withfiltres') && g.attr('data-cur') != filter){
-          g.attr('data-cur', filter);
-          g.slick('slickUnfilter').slick('slickFilter',filter);
-        }
-        g.slick('slickGoTo', num, true);
-      }
-
-      addToCartHandler.initFormAddToCartButton(variant.id, _parent, _swatch);
-
-      $('.four-images-js').length && setFourSlider($('.four-images-js'), product, variant);
-
-      var buyinoneclick = _parent.find(".buyinoneclick");
-      buyinoneclick.length && buyinoneclick.removeClass("hide");
-
-      if(_parent.find('.compare-js').length){
-        _parent.find('.compare-js').attr('data-compareid', variant.id);
-        $(window).trigger( "compareevent" );
-      }
-
-      var tfpw = $('.tt-fixed-product-wrapper');
-      if(tfpw.length){
-        if(variant.featured_image){
-          tfpw.find('img').attr('src', Shopify.resizeImage(variant.featured_image.src, 'x80'));
-        }
-
-        var s = tfpw.find('select');
-        s.val(variant.id);
-        variant.available ? s.removeClass('disabled') : s.addClass('disabled');
-
-        var v = $('.tt-product-single-info').find('.tt-input-counter').first().clone();
-        tfpw.find('.tt-input-counter').replaceWith(v);
-      }
-    }
-    function setDefaultSlider(variant, num, $container, target){
-      if(num && $container.length){
-        $container.slick('slickGoTo', num, true);
-        $container.find('.zoomGalleryActive').removeClass('zoomGalleryActive');
-        target.addClass('zoomGalleryActive');
-        $(".zoom-product").attr('src', target.attr('data-image')).attr('data-zoom-image', target.attr('data-zoom-image'));
-      }
-      else{
-        variant.featured_image && $(".zoom-product").attr('src', variant.featured_image.src).attr('data-zoom-image', variant.featured_image.src);
-      }
-
-      !elevateZoomWidget.checkNoZoom() && elevateZoomWidget.configureZoomImage();
-    }
-    function setFourSlider($container, product, variant){
-      if(product.images.length < 4 || variant.featured_image == null) return false;
-
-      var c_img = variant.featured_image.src.replace(/https:/g, '');
-      var img_a = String(c_img+product.images.join(',').split(c_img).pop()).split(',');
-
-      $container.find(".zoom-product").each(function(index){
-        var src = Shopify.resizeImage(img_a[index], '600x');
-        $(this).attr('src',src);
-      })
-
-      !elevateZoomWidget.checkNoZoom() && elevateZoomWidget.configureZoomImage();
-    }
-    function setScrollSlider(num, $container){
-      if(!(num && $container.length)) return false;
-      $container.slick('slickGoTo', num, true);
-    }
-    Shopify.getProduct('{{ product.handle }}', productPageJsonLoaded);
-  });
-</script>
