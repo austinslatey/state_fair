@@ -17,11 +17,11 @@
 <script>
   global_quantity = {};
   {% for variant in product.variants %}
-  {% if variant.inventory_policy == "continue" %}
-  	global_quantity[{{ variant.id }}] = 'continue' + {{ variant.inventory_quantity }};
-  {% else %}
-  	global_quantity[{{ variant.id }}] = {{ variant.inventory_quantity }};
-  {% endif %}
+    {% if variant.inventory_policy == "continue" %}
+      global_quantity[{{ variant.id }}] = 'continue' + {{ variant.inventory_quantity }};
+    {% else %}
+      global_quantity[{{ variant.id }}] = {{ variant.inventory_quantity }};
+    {% endif %}
   {% endfor %}
     
   {% if product.available and settings.satc_show %}
@@ -83,7 +83,6 @@
           var c_ = c.clone();
           p.addClass('atdshowed').find('.tt-input-counter').replaceWith(c_);
           p.find('.tt-price').replaceWith(q.find('.tt-price').first().clone());
-          p.find('.btn').replaceWith($('.btn-addtocart').first().clone().removeClass('btn-lg btn-addtocart addtocart-js'));
           $('.tt-promo-fixed').length && $('.tt-promo-fixed').css('bottom', p.innerHeight()+20);
           p.fadeIn(200);
         }
@@ -95,6 +94,76 @@
       }
     }
   {% endif %}
+
+  var selectCallback = function(variant, selector) {
+    console.log('selectCallback triggered', variant); // Debug log
+    const isLoggedIn = {{ customer | json }} !== null;
+    const isStateFairProduct = {{ product.collections | map: 'handle' | json }}.includes('2025-state-fair-sale');
+    const saleOn = variant.compare_at_price > variant.price;
+    let price = variant.price;
+    let priceHtml = saleOn
+      ? `<span class="new-price">${Shopify.formatMoney(variant.price)}</span><span class="old-price">${Shopify.formatMoney(variant.compare_at_price)}</span>`
+      : `<span class="regular-price">${Shopify.formatMoney(variant.price)}</span>`;
+
+    if (isLoggedIn && isStateFairProduct) {
+      const selectedOption = document.querySelector(`[data-var_id="${variant.id}"]`);
+      const stateFairPrice = selectedOption ? selectedOption.dataset.stateFairPrice : {{ product.metafields.custom.state_fair_price | json }};
+      if (stateFairPrice) {
+        price = parseFloat(stateFairPrice) * 100; // Convert to cents for Affirm
+        priceHtml = `
+          <span class="original-price"><s>${Shopify.formatMoney(variant.price)}</s></span>
+          <span class="state-fair-price">${Shopify.formatMoney(price)}</span>
+        `;
+      }
+    }
+
+    $('.affirm-as-low-as').attr('data-amount', price);
+    try {
+      affirm.ui.refresh();
+    } catch (e) {
+      console.warn('Affirm refresh failed:', e.message);
+    }
+
+    $('.tt-price').each(function() {
+      $(this).html(priceHtml);
+    });
+  };
+
+  // Ensure Shopify.formatMoney is defined
+  if (!Shopify.formatMoney) {
+    Shopify.formatMoney = function(cents, format) {
+      if (typeof cents === 'string') { cents = cents.replace('.', ''); }
+      var value = '';
+      var placeholderRegex = /\{\{\s*(\w+)\s*\}\}/;
+      var formatString = format || '${{amount}}';
+      function formatWithDelimiters(number, precision, thousands, decimal) {
+        precision = precision || 2;
+        thousands = thousands || ',';
+        decimal = decimal || '.';
+        if (isNaN(number) || number == null) { return 0; }
+        number = (number / 100.0).toFixed(precision);
+        var parts = number.split('.');
+        var dollars = parts[0].replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1' + thousands);
+        var cents = parts[1] ? (decimal + parts[1]) : '';
+        return dollars + cents;
+      }
+      switch(formatString.match(placeholderRegex)[1]) {
+        case 'amount':
+          value = formatWithDelimiters(cents, 2);
+          break;
+        case 'amount_no_decimals':
+          value = formatWithDelimiters(cents, 0);
+          break;
+        case 'amount_with_comma_separator':
+          value = formatWithDelimiters(cents, 2, '.', ',');
+          break;
+        case 'amount_no_decimals_with_comma_separator':
+          value = formatWithDelimiters(cents, 0, '.', ',');
+          break;
+      }
+      return formatString.replace(placeholderRegex, value);
+    };
+  }
 </script>
 <script>
   var selectCallback = function(variant, selector) {
