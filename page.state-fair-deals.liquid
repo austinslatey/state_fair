@@ -1,25 +1,33 @@
 {% layout 'theme' %}
-<div class="state-fair-deals-page">
-  <h1>2025 State Fair Deals</h1>
-  <div class="page-content">
-    <!-- Sidebar for title prefix filtering -->
-    <div class="sidebar">
-      <h2>Filter by Product</h2>
-      <ul class="vendor-list">
-        <li><a href="#" data-filter="all" class="vendor-link active">All Products</a></li>
-        <!-- Populated dynamically by JavaScript -->
-      </ul>
-    </div>
-    <!-- Main product display -->
-    <div class="main-content">
-      <div class="collection-products" id="collection-products">
-        <!-- Products populated dynamically by JavaScript -->
+
+{% if customer %}
+  <div class="state-fair-deals-page">
+    <h1>2025 State Fair Deals</h1>
+    <div class="page-content">
+      <!-- Sidebar for title prefix filtering -->
+      <div class="sidebar">
+        <h2>Filter by Product</h2>
+        <ul class="vendor-list">
+          <li><a href="#" data-filter="all" class="vendor-link active">All Products</a></li>
+          <!-- Populated dynamically by JavaScript -->
+        </ul>
       </div>
-      <div id="loading" style="display: none; text-align: center;">Loading...</div>
-      <div id="error" style="display: none; color: red;">Error loading products. Please try again later.</div>
+      <!-- Main product display -->
+      <div class="main-content">
+        <div class="collection-products" id="collection-products">
+          <!-- Products populated dynamically by JavaScript -->
+        </div>
+        <div id="loading" style="display: none; text-align: center;">Loading...</div>
+        <div id="error" style="display: none; color: red;">Error loading products. Please try again later.</div>
+      </div>
     </div>
   </div>
-</div>
+{% else %}
+  <div class="login-prompt" style="text-align: center; padding: 20px; max-width: 1200px; margin: 0 auto;">
+    <h1>Access Restricted</h1>
+    <p>You must be logged in to view the 2025 State Fair Deals. Please <a href="/account/login?return_to={{ request.path | url_encode }}">log in</a> or <a href="/account/register">create an account</a>.</p>
+  </div>
+{% endif %}
 
 <style>
   .state-fair-deals-page {
@@ -122,256 +130,257 @@
     display: block;
     font-size: 14px;
   }
+  .login-prompt a {
+    color: #33ff44;
+    text-decoration: underline;
+  }
 </style>
 
 <script>
-  // Storefront API configuration
-  const STORE_DOMAIN = 'https://waldoch-truck-accessories-store.myshopify.com';
-  const API_VERSION = '2025-04';
-  const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
-  const COLLECTION_HANDLE = '2025-state-fair-sale';
-  const PRODUCTS_PER_PAGE = 250;
+  // Only run JavaScript if customer is logged in
+  {% if customer %}
+    // Storefront API configuration
+    const STORE_DOMAIN = 'https://waldoch-truck-accessories-store.myshopify.com';
+    const API_VERSION = '2025-04';
+    const ACCESS_TOKEN = 'your-storefront-api-token'; // Replace with secure method
+    const COLLECTION_HANDLE = '2025-state-fair-sale';
+    const PRODUCTS_PER_PAGE = 250;
 
-  // Normalize product title for grouping
-  function normalizeTitle(title) {
-    if (!title) return 'unknown';
-    // Remove special characters, normalize case, and standardize variations
-    let normalized = title
-      .toLowerCase()
-      .replace(/[®™]/g, '')
-      .replace(/\s+/g, ' ')
-      .replace('flp', 'flip')
-      .replace('dodge ram', 'ram')
-      .trim();
-    
-    // Extract base name (brand or first significant word/phrase)
-    const words = normalized.split(' ');
-    if (words.length === 0) return 'unknown';
-    
-    // Known brands or categories
-    const brands = [
-      'aeroskin', 'amp', 'bedrug', 'bedstep', 'düha', 'thule', 'ford', 'ram',
-      'impactliner', 'goodyear', 'cooper', 'nitto', 'kenda', 'toyo', 'magnaflow',
-      'truxedo', 'bakflip', 'bds', 'bushwacker', 'floorliner', 'hdx', 'powerstep'
-    ];
-    
-    // Check if the title starts with or contains a known brand
-    let baseName = words[0];
-    for (const brand of brands) {
-      if (normalized.startsWith(brand) || normalized.includes(brand)) {
-        baseName = brand;
-        break;
+    // Normalize product title for grouping
+    function normalizeTitle(title) {
+      if (!title) return 'unknown';
+      let normalized = title
+        .toLowerCase()
+        .replace(/[®™]/g, '')
+        .replace(/\s+/g, ' ')
+        .replace('flp', 'flip')
+        .replace('dodge ram', 'ram')
+        .trim();
+      const words = normalized.split(' ');
+      if (words.length === 0) return 'unknown';
+      const brands = [
+        'aeroskin', 'amp', 'bedrug', 'bedstep', 'düha', 'thule', 'ford', 'ram',
+        'impactliner', 'goodyear', 'cooper', 'nitto', 'kenda', 'toyo', 'magnaflow',
+        'truxedo', 'bakflip', 'bds', 'bushwacker', 'floorliner', 'hdx', 'powerstep'
+      ];
+      let baseName = words[0];
+      for (const brand of brands) {
+        if (normalized.startsWith(brand) || normalized.includes(brand)) {
+          baseName = brand;
+          break;
+        }
       }
+      if (normalized.includes('chrome')) baseName = 'chrome';
+      if (normalized.includes('inflatable')) baseName = 'inflatable';
+      if (normalized.includes('winch')) baseName = 'winch';
+      if (normalized.includes('model')) baseName = 'model';
+      return baseName;
     }
-    
-    // Handle special cases
-    if (normalized.includes('chrome')) baseName = 'chrome';
-    if (normalized.includes('inflatable')) baseName = 'inflatable';
-    if (normalized.includes('winch')) baseName = 'winch';
-    if (normalized.includes('model')) baseName = 'model';
-    
-    return baseName;
-  }
 
-  // Fetch products from Storefront API
-  async function fetchProducts(cursor = null, retries = 3) {
-    const query = `
-      query GetCollectionProducts($handle: String!, $first: Int!, $cursor: String) {
-        collection(handle: $handle) {
-          id
-          title
-          products(first: $first, after: $cursor) {
-            edges {
-              node {
-                id
-                title
-                handle
-                featuredImage {
-                  url
-                  altText
-                }
-                priceRange {
-                  minVariantPrice {
-                    amount
-                    currencyCode
+    // Fetch products from Storefront API
+    async function fetchProducts(cursor = null, retries = 3) {
+      const query = `
+        query GetCollectionProducts($handle: String!, $first: Int!, $cursor: String) {
+          collection(handle: $handle) {
+            id
+            title
+            products(first: $first, after: $cursor) {
+              edges {
+                node {
+                  id
+                  title
+                  handle
+                  featuredImage {
+                    url
+                    altText
+                  }
+                  priceRange {
+                    minVariantPrice {
+                      amount
+                      currencyCode
+                    }
+                  }
+                  metafields(identifiers: [{ namespace: "custom", key: "state_fair_price" }]) {
+                    id
+                    namespace
+                    key
+                    value
                   }
                 }
-                metafields(identifiers: [{ namespace: "custom", key: "state_fair_price" }]) {
-                  id
-                  namespace
-                  key
-                  value
-                }
+                cursor
               }
-              cursor
-            }
-            pageInfo {
-              hasNextPage
-              endCursor
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
             }
           }
         }
-      }
-    `;
-    const variables = {
-      handle: COLLECTION_HANDLE,
-      first: PRODUCTS_PER_PAGE,
-      cursor,
-    };
+      `;
+      const variables = {
+        handle: COLLECTION_HANDLE,
+        first: PRODUCTS_PER_PAGE,
+        cursor,
+      };
 
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        console.log(`Fetching products, attempt ${attempt}, cursor:`, cursor);
-        document.getElementById('loading').style.display = 'block';
-        const response = await fetch(`${STORE_DOMAIN}/api/${API_VERSION}/graphql.json`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Shopify-Storefront-Access-Token': ACCESS_TOKEN,
-          },
-          body: JSON.stringify({ query, variables }),
-        });
-        console.log('Response status:', response.status);
-        if (response.status === 429) {
-          console.warn('Rate limit hit, retrying after delay...');
+      for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+          console.log(`Fetching products, attempt ${attempt}, cursor: ${cursor || 'none'}`);
+          document.getElementById('loading').style.display = 'block';
+          const response = await fetch(`${STORE_DOMAIN}/api/${API_VERSION}/graphql.json`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Shopify-Storefront-Access-Token': ACCESS_TOKEN,
+            },
+            body: JSON.stringify({ query, variables }),
+          });
+          console.log('Response status:', response.status);
+          if (response.status === 429) {
+            console.warn('Rate limit hit, retrying after delay...');
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt * 2));
+            continue;
+          }
+          if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+          const data = await response.json();
+          if (data.errors) throw new Error(data.errors.map(e => e.message).join(', '));
+          console.log('Products fetched:', data.data.collection?.products.edges.length || 0);
+          return data.data.collection ? data.data.collection.products : { edges: [], pageInfo: { hasNextPage: false, endCursor: null } };
+        } catch (error) {
+          console.error(`Attempt ${attempt} failed:`, error);
+          if (attempt === retries) {
+            console.error('Max retries reached, returning empty result');
+            document.getElementById('error').style.display = 'block';
+            return { edges: [], pageInfo: { hasNextPage: false, endCursor: null } };
+          }
           await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-          continue;
+        } finally {
+          document.getElementById('loading').style.display = 'none';
         }
-        if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
-        const data = await response.json();
-        if (data.errors) throw new Error(data.errors.map(e => e.message).join(', '));
-        console.log('Products fetched:', data.data.collection?.products.edges.length || 0);
-        return data.data.collection ? data.data.collection.products : null;
-      } catch (error) {
-        console.error(`Attempt ${attempt} failed:`, error);
-        if (attempt === retries) {
-          document.getElementById('error').style.display = 'block';
-          return null;
-        }
-      } finally {
-        document.getElementById('loading').style.display = 'none';
       }
     }
-  }
 
-  // Render products and filters
-  async function renderCollection() {
-    const collectionProducts = document.getElementById('collection-products');
-    const vendorList = document.querySelector('.vendor-list');
-    collectionProducts.innerHTML = '';
-    vendorList.innerHTML = '<li><a href="#" data-filter="all" class="vendor-link active">All Products</a></li>';
-    let allProducts = [];
-    let prefixes = new Set();
-    let cursor = null;
-    let hasNextPage = true;
+    // Render products and filters
+    async function renderCollection() {
+      const collectionProducts = document.getElementById('collection-products');
+      const vendorList = document.querySelector('.vendor-list');
+      collectionProducts.innerHTML = '';
+      vendorList.innerHTML = '<li><a href="#" data-filter="all" class="vendor-link active">All Products</a></li>';
+      let allProducts = [];
+      let prefixes = new Set();
+      let cursor = null;
+      let hasNextPage = true;
+      let totalFetched = 0;
 
-    // Fetch all products with pagination
-    while (hasNextPage) {
-      const result = await fetchProducts(cursor);
-      if (!result) {
-        console.error('No products returned, stopping pagination');
-        break;
-      }
-      const products = result.edges.map(edge => edge.node);
-      console.log('Fetched products in batch:', products.length, 'Titles:', products.map(p => p.title));
-      allProducts = allProducts.concat(products);
-      hasNextPage = result.pageInfo.hasNextPage;
-      cursor = result.pageInfo.endCursor;
-    }
-
-    console.log('Total products fetched:', allProducts.length);
-    console.log('Product titles:', allProducts.map(p => p.title));
-
-    // Group products by normalized base name
-    const groupedProducts = {};
-    allProducts.forEach(product => {
-      const baseName = normalizeTitle(product.title);
-      if (!groupedProducts[baseName]) {
-        groupedProducts[baseName] = [];
-      }
-      groupedProducts[baseName].push(product);
-      prefixes.add(baseName);
-    });
-
-    // Sort prefixes and products within each group
-    const sortedPrefixes = Array.from(prefixes).sort();
-    Object.keys(groupedProducts).forEach(baseName => {
-      groupedProducts[baseName].sort((a, b) => {
-        // Extract part number or variant identifier for sorting within group
-        const aParts = a.title.trim().split(' ');
-        const bParts = b.title.trim().split(' ');
-        const aIdentifier = aParts[aParts.length - 1];
-        const bIdentifier = bParts[bParts.length - 1];
-        // Sort by part number numerically if possible, otherwise by title
-        if (baseName === 'düha' || baseName === 'impactliner') {
-          return parseInt(aIdentifier.replace(/\D/g, '')) - parseInt(bIdentifier.replace(/\D/g, '')) || a.title.localeCompare(b.title);
+      // Fetch all products with pagination
+      while (hasNextPage) {
+        const result = await fetchProducts(cursor);
+        if (!result || !result.edges) {
+          console.error('No products returned or invalid response, stopping pagination');
+          break;
         }
-        return a.title.localeCompare(b.title);
+        const products = result.edges.map(edge => edge.node);
+        totalFetched += products.length;
+        console.log(`Fetched batch of ${products.length} products. Total fetched: ${totalFetched}`);
+        console.log('Titles in batch:', products.map(p => p.title));
+        allProducts = allProducts.concat(products);
+        hasNextPage = result.pageInfo.hasNextPage;
+        cursor = result.pageInfo.endCursor;
+        console.log(`Pagination status: hasNextPage=${hasNextPage}, cursor=${cursor || 'none'}`);
+      }
+
+      console.log(`Total products fetched: ${allProducts.length}`);
+      if (allProducts.length < 2538) {
+        console.warn(`Expected 2538 products, but fetched ${allProducts.length}. Check collection visibility, API permissions, or product availability in Shopify admin.`);
+      }
+
+      // Group products by normalized base name
+      const groupedProducts = {};
+      allProducts.forEach(product => {
+        const baseName = normalizeTitle(product.title);
+        if (!groupedProducts[baseName]) {
+          groupedProducts[baseName] = [];
+        }
+        groupedProducts[baseName].push(product);
+        prefixes.add(baseName);
       });
-    });
 
-    // Generate prefix filters
-    sortedPrefixes.forEach(prefix => {
-      const li = document.createElement('li');
-      const a = document.createElement('a');
-      a.href = '#';
-      a.className = 'vendor-link';
-      a.dataset.filter = prefix;
-      a.textContent = prefix.charAt(0).toUpperCase() + prefix.slice(1); // Capitalize
-      li.appendChild(a);
-      vendorList.appendChild(li);
-    });
-
-    // Render products
-    sortedPrefixes.forEach(baseName => {
-      // Add group header
-      const h2 = document.createElement('h2');
-      h2.className = 'prefix-group';
-      h2.dataset.prefix = baseName;
-      h2.textContent = baseName.charAt(0).toUpperCase() + baseName.slice(1);
-      collectionProducts.appendChild(h2);
-
-      // Render products in this group
-      groupedProducts[baseName].forEach(product => {
-        const div = document.createElement('div');
-        div.className = 'product-item';
-        div.dataset.prefix = baseName;
-        div.innerHTML = `
-          <a href="/products/${product.handle}">
-            <img
-              src="${product.featuredImage?.url ? product.featuredImage.url + '?width=200&height=150&crop=center' : 'https://via.placeholder.com/200'}"
-              alt="${product.title || 'No Title'}"
-              loading="lazy"
-            >
-            <h3>${product.title || 'No Title'}</h3>
-            ${
-              product.metafields[0]?.value
-                ? `
-                  <span class="price original-price">Original: <s>$${parseFloat(product.priceRange.minVariantPrice.amount).toFixed(2)}</s></span>
-                  <span class="price state-fair-price">Sale: $${(parseFloat(product.metafields[0].value) * 1).toFixed(2)}</span>
-                `
-                : `<span class="price regular-price">$${parseFloat(product.priceRange.minVariantPrice.amount).toFixed(2)}</span>`
-            }
-          </a>
-        `;
-        collectionProducts.appendChild(div);
-      });
-    });
-
-    // Add filter event listeners
-    document.querySelectorAll('.vendor-link').forEach(link => {
-      link.addEventListener('click', e => {
-        e.preventDefault();
-        const filter = link.getAttribute('data-filter');
-        document.querySelectorAll('.vendor-link').forEach(l => l.classList.remove('active'));
-        link.classList.add('active');
-        document.querySelectorAll('.product-item, .prefix-group').forEach(item => {
-          item.classList.toggle('hidden', filter !== 'all' && item.getAttribute('data-prefix') !== filter);
+      // Sort prefixes and products within each group
+      const sortedPrefixes = Array.from(prefixes).sort();
+      Object.keys(groupedProducts).forEach(baseName => {
+        groupedProducts[baseName].sort((a, b) => {
+          const aParts = a.title.trim().split(' ');
+          const bParts = b.title.trim().split(' ');
+          const aIdentifier = aParts[aParts.length - 1];
+          const bIdentifier = bParts[bParts.length - 1];
+          if (baseName === 'düha' || baseName === 'impactliner') {
+            return parseInt(aIdentifier.replace(/\D/g, '')) - parseInt(bIdentifier.replace(/\D/g, '')) || a.title.localeCompare(b.title);
+          }
+          return a.title.localeCompare(b.title);
         });
       });
-    });
-  }
 
-  // Initialize
-  document.addEventListener('DOMContentLoaded', renderCollection);
+      // Generate prefix filters
+      sortedPrefixes.forEach(prefix => {
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+        a.href = '#';
+        a.className = 'vendor-link';
+        a.dataset.filter = prefix;
+        a.textContent = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+        li.appendChild(a);
+        vendorList.appendChild(li);
+      });
+
+      // Render products
+      sortedPrefixes.forEach(baseName => {
+        const h2 = document.createElement('h2');
+        h2.className = 'prefix-group';
+        h2.dataset.prefix = baseName;
+        h2.textContent = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+        collectionProducts.appendChild(h2);
+
+        groupedProducts[baseName].forEach(product => {
+          const div = document.createElement('div');
+          div.className = 'product-item';
+          div.dataset.prefix = baseName;
+          div.innerHTML = `
+            <a href="/products/${product.handle}">
+              <img
+                src="${product.featuredImage?.url ? product.featuredImage.url + '?width=200&height=150&crop=center' : 'https://via.placeholder.com/200'}"
+                alt="${product.title || 'No Title'}"
+                loading="lazy"
+              >
+              <h3>${product.title || 'No Title'}</h3>
+              ${
+                product.metafields[0]?.value
+                  ? `
+                    <span class="price original-price">Original: <s>$${parseFloat(product.priceRange.minVariantPrice.amount).toFixed(2)}</s></span>
+                    <span class="price state-fair-price">Sale: $${(parseFloat(product.metafields[0].value) * 1).toFixed(2)}</span>
+                  `
+                  : `<span class="price regular-price">$${parseFloat(product.priceRange.minVariantPrice.amount).toFixed(2)}</span>`
+              }
+            </a>
+          `;
+          collectionProducts.appendChild(div);
+        });
+      });
+
+      // Add filter event listeners
+      document.querySelectorAll('.vendor-link').forEach(link => {
+        link.addEventListener('click', e => {
+          e.preventDefault();
+          const filter = link.getAttribute('data-filter');
+          document.querySelectorAll('.vendor-link').forEach(l => l.classList.remove('active'));
+          link.classList.add('active');
+          document.querySelectorAll('.product-item, .prefix-group').forEach(item => {
+            item.classList.toggle('hidden', filter !== 'all' && item.getAttribute('data-prefix') !== filter);
+          });
+        });
+      });
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', renderCollection);
+  {% endif %}
 </script>
